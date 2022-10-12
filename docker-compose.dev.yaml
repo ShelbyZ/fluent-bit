@@ -1,0 +1,35 @@
+version: '3'
+
+services:
+  fluent-bit-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+
+      - ./cmake:/fluent-bit/dev/cmake
+      - ./conf:/fluent-bit/dev/conf
+      - ./cpack:/fluent-bit/dev/cpack
+      - ./examples:/fluent-bit/dev/examples
+      - ./gen_static_conf:/fluent-bit/dev/gen_static_conf
+      - ./include:/fluent-bit/dev/include
+      - ./init:/fluent-bit/dev/init
+      - ./lib:/fluent-bit/dev/lib
+      - ./plugins:/fluent-bit/dev/plugins
+      - ./scripts:/fluent-bit/dev/scripts
+      - ./src:/fluent-bit/dev/src
+      - ./tests:/fluent-bit/dev/tests
+      - ./tools:/fluent-bit/dev/tools
+      - ./CMakeLists.txt:/fluent-bit/dev/CMakeLists.txt
+      - ./LICENSE:/fluent-bit/dev/LICENSE
+      - ./valgrind.supp:/fluent-bit/dev/valgrind.supp
+      - ./.vscode:/fluent-bit/dev/.vscode
+      - ./scratch:/fluent-bit/dev/scratch
+      - fluent-bit-dev-cmake-build:/fluent-bit/dev/build
+      - fluent-bit-dev-extensions:/root/.vscode-server/extensions
+      - fluent-bit-dev-extensions-insiders:/root/.vscode-server-insiders/extensions
+
+volumes:
+  fluent-bit-dev-cmake-build:
+  fluent-bit-dev-extensions:
+  fluent-bit-dev-extensions-insiders:

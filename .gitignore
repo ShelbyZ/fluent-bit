@@ -41,3 +41,17 @@ workflow/
 examples/wasi_serde_json/target/
 # WASM test data
 tests/runtime/wasm/go/*.wasm
+
+# misc build artifacts
+*.a
+*.so
+Makefile*
+CMakeFiles
+*.cmake
+lib/luajit-cmake
+lib/monkey
+lib/miniz
+lib/c-ares*
+lib/cmetrics*
+src/record_accessor
+src/stream_processor/parser
