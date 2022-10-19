@@ -186,6 +186,11 @@ int compare_events(const void *a_arg, const void *b_arg)
 static inline int try_to_write(char *buf, int *off, size_t left,
                                const char *str, size_t str_len)
 {
+    if (str == NULL)
+    {
+        return FLB_FALSE;
+    }
+
     if (str_len <= 0){
         str_len = strlen(str);
     }
