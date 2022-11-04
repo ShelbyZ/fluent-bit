@@ -103,6 +103,7 @@ void *flb_realloc_z(void *ptr, const size_t old_size, const size_t new_size)
 
     tmp = flb_realloc(ptr, new_size);
     if (!tmp) {
+        flb_free(ptr);
         return NULL;
     }
 

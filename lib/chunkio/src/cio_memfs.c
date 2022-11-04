@@ -97,6 +97,7 @@ int cio_memfs_write(struct cio_chunk *ch, const void *buf, size_t count)
         tmp = realloc(mf->buf_data, new_size);
         if (!tmp) {
             cio_errno();
+            free(mf->buf_data);
             return -1;
         }
 

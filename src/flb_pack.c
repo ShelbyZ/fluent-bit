@@ -71,6 +71,7 @@ int flb_json_tokenise(const char *js, size_t len,
         tmp = flb_realloc(state->tokens, new_size);
         if (!tmp) {
             flb_errno();
+            flb_free(state->tokens);
             return -1;
         }
         state->tokens = tmp;
@@ -127,6 +128,7 @@ static inline int pack_string_token(struct flb_pack_state *state,
         tmp = flb_realloc(state->buf_data, s);
         if (!tmp) {
             flb_errno();
+            flb_free(state->buf_data);
             return -1;
         }
         else {

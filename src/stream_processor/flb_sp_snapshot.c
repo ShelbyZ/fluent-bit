@@ -229,6 +229,7 @@ int flb_sp_snapshot_flush(struct flb_sp *sp, struct flb_sp_task *task,
                                                         *out_buf_size + snapshot->size);
                 if (!out_buf_data_tmp) {
                     flb_errno();
+                    flb_free(*out_buf_data);
                     return -1;
                 }
                 *out_buf_data = out_buf_data_tmp;

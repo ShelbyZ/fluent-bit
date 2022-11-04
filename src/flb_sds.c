@@ -107,6 +107,7 @@ flb_sds_t flb_sds_increase(flb_sds_t s, size_t len)
     tmp = flb_realloc(head, new_size);
     if (!tmp) {
         flb_errno();
+        flb_free(head);
         return NULL;
     }
     head = (struct flb_sds *) tmp;

@@ -859,6 +859,7 @@ int flb_http_buffer_increase(struct flb_http_client *c, size_t size,
     tmp = flb_realloc(c->resp.data, new_size);
     if (!tmp) {
         flb_errno();
+        flb_free(c->resp.data);
         return -1;
     }
     else {
@@ -976,6 +977,7 @@ static int http_header_push(struct flb_http_client *c, struct flb_kv *header)
         tmp = flb_realloc(c->header_buf, new_size);
         if (!tmp) {
             flb_errno();
+            flb_free(conn->header_buf);
             return -1;
         }
         c->header_buf  = tmp;
@@ -1161,6 +1163,7 @@ int flb_http_do(struct flb_http_client *c, size_t *bytes)
         tmp = flb_realloc(c->header_buf, new_size);
         if (!tmp) {
             flb_errno();
+            flb_free(c->header_buf);
             return -1;
         }
         c->header_buf  = tmp;

@@ -195,6 +195,7 @@ int tcp_conn_event(void *data)
             tmp = flb_realloc(conn->buf_data, size);
             if (!tmp) {
                 flb_errno();
+                flb_free(conn->buf_data);
                 return -1;
             }
             flb_plg_trace(ctx->ins, "fd=%i buffer realloc %i -> %i",
