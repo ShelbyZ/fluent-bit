@@ -94,6 +94,10 @@ void *flb_realloc(void *ptr, const size_t size)
     return realloc(ptr, size);
 }
 
+static inline void flb_free(void *ptr) {
+    free(ptr);
+}
+
 static inline FLB_ALLOCSZ_ATTR(3)
 void *flb_realloc_z(void *ptr, const size_t old_size, const size_t new_size)
 {
@@ -114,11 +118,6 @@ void *flb_realloc_z(void *ptr, const size_t old_size, const size_t new_size)
     }
 
     return tmp;
-}
-
-
-static inline void flb_free(void *ptr) {
-    free(ptr);
 }
 
 #undef FLB_ALLOCSZ_ATTR
