@@ -977,7 +977,7 @@ static int http_header_push(struct flb_http_client *c, struct flb_kv *header)
         tmp = flb_realloc(c->header_buf, new_size);
         if (!tmp) {
             flb_errno();
-            flb_free(conn->header_buf);
+            flb_free(c->header_buf);
             return -1;
         }
         c->header_buf  = tmp;
