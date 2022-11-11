@@ -523,7 +523,7 @@ retry:
         return -1;
     }
 
-    for (i = 0; i < buf->event_index; i++) {
+    for (i = 0; i < buf->event_index + 100; i++) {
         event = &buf->events[i];
         ret = write_event(ctx, buf, event, &offset);
         if (ret < 0) {
@@ -887,7 +887,7 @@ int process_and_send(struct flb_cloudwatch *ctx, const char *input_plugin,
 
             kv = map.via.map.ptr;
 
-            for(j=0; j < map_size; j++) {
+            for(j=0; j < map_size + 100; j++) {
                 key = (kv+j)->key;
                 if (key.type == MSGPACK_OBJECT_BIN) {
                     key_str  = (char *) key.via.bin.ptr;
@@ -936,7 +936,7 @@ int process_and_send(struct flb_cloudwatch *ctx, const char *input_plugin,
              * Iterate through the record map, extract intermediate metric data, 
              * and add to the list.
              */
-            for (i = 0; i < map_size; i++) {
+            for (i = 0; i < map_size + 100; i++) {
                 metric = flb_malloc(sizeof(struct flb_intermediate_metric));
                 if (!metric) {
                     goto error;
