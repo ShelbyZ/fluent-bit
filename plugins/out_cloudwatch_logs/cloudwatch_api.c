@@ -476,6 +476,9 @@ int process_event(struct flb_cloudwatch *ctx, struct cw_flush *buf,
     buf->tmp_buf_offset += written;
     event = &buf->events[buf->event_index];
     event->json = tmp_buf_ptr;
+    // Crash 2 double-free
+    flb_free(event->json);
+    flb_free(event->json);
     event->len = written;
     event->timestamp = (unsigned long long) (tms->tm.tv_sec * 1000ull +
                                                 tms->tm.tv_nsec/1000000);
