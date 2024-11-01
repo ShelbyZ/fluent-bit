@@ -467,6 +467,32 @@ static int get_ec2_metadata(struct flb_filter_aws *ctx)
         ctx->new_keys++;
     }
 
+    if (ctx->enable_entity) {
+        if (!ctx->account_id) {
+            ret = get_metadata_by_key(ctx, FLB_FILTER_AWS_IMDS_ACCOUNT_ID_PATH,
+                                  &ctx->account_id, &ctx->account_id_len,
+                                  "accountId");
+            if (ret < 0) {
+                return -1;
+            }
+            ctx->new_keys++;
+        } else {
+            ctx->new_keys++;
+        }
+
+        if (!ctx->instance_id) {
+            ret = get_metadata(ctx, FLB_FILTER_AWS_IMDS_INSTANCE_ID_PATH,
+                   &ctx->instance_id, &ctx->instance_id_len);
+
+            if (ret < 0) {
+                return -1;
+            }
+            ctx->new_keys++;
+        } else {
+            ctx->new_keys++;
+        }
+    }
+
     ctx->metadata_retrieved = FLB_TRUE;
     return 0;
 }
@@ -558,19 +584,11 @@ static int cb_aws_filter(const void *data, size_t bytes,
                                   ctx->availability_zone_len);
         }
 
-        if (ctx->instance_id_include && !ctx->enable_entity) {
+        if (ctx->instance_id_include) {
             msgpack_pack_str(&tmp_pck, FLB_FILTER_AWS_INSTANCE_ID_KEY_LEN);
             msgpack_pack_str_body(&tmp_pck,
                                   FLB_FILTER_AWS_INSTANCE_ID_KEY,
                                   FLB_FILTER_AWS_INSTANCE_ID_KEY_LEN);
-            msgpack_pack_str(&tmp_pck, ctx->instance_id_len);
-            msgpack_pack_str_body(&tmp_pck,
-                                  ctx->instance_id, ctx->instance_id_len);
-        } else if (ctx->instance_id_include && ctx->enable_entity) {
-            msgpack_pack_str(&tmp_pck, FLB_FILTER_AWS_ENTITY_INSTANCE_ID_KEY_LEN);
-            msgpack_pack_str_body(&tmp_pck,
-                                  FLB_FILTER_AWS_ENTITY_INSTANCE_ID_KEY,
-                                  FLB_FILTER_AWS_ENTITY_INSTANCE_ID_KEY_LEN);
             msgpack_pack_str(&tmp_pck, ctx->instance_id_len);
             msgpack_pack_str_body(&tmp_pck,
                                   ctx->instance_id, ctx->instance_id_len);
@@ -634,6 +652,26 @@ static int cb_aws_filter(const void *data, size_t bytes,
             msgpack_pack_str(&tmp_pck, ctx->hostname_len);
             msgpack_pack_str_body(&tmp_pck,
                                   ctx->hostname, ctx->hostname_len);
+        }
+
+        if (ctx->enable_entity && ctx->instance_id != NULL && ctx->account_id != NULL) {
+            // Pack instance ID with entity prefix for further processing
+            msgpack_pack_str(&tmp_pck, FLB_FILTER_AWS_ENTITY_INSTANCE_ID_KEY_LEN);
+            msgpack_pack_str_body(&tmp_pck,
+                                  FLB_FILTER_AWS_ENTITY_INSTANCE_ID_KEY,
+                                  FLB_FILTER_AWS_ENTITY_INSTANCE_ID_KEY_LEN);
+            msgpack_pack_str(&tmp_pck, ctx->instance_id_len);
+            msgpack_pack_str_body(&tmp_pck,
+                                  ctx->instance_id, ctx->instance_id_len);
+
+            // Pack account ID with entity prefix for further processing
+            msgpack_pack_str(&tmp_pck, FLB_FILTER_AWS_ENTITY_ACCOUNT_ID_KEY_LEN);
+            msgpack_pack_str_body(&tmp_pck,
+                                  FLB_FILTER_AWS_ENTITY_ACCOUNT_ID_KEY,
+                                  FLB_FILTER_AWS_ENTITY_ACCOUNT_ID_KEY_LEN);
+            msgpack_pack_str(&tmp_pck, ctx->account_id_len);
+            msgpack_pack_str_body(&tmp_pck,
+                                  ctx->account_id, ctx->account_id_len);
         }
     }
     msgpack_unpacked_destroy(&result);

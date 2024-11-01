@@ -515,6 +515,7 @@ void entity_destroy(entity *entity) {
         flb_free(entity->key_attributes->environment);
         flb_free(entity->key_attributes->name);
         flb_free(entity->key_attributes->type);
+        flb_free(entity->key_attributes->account_id);
         flb_free(entity->key_attributes);
     }
     flb_free(entity);

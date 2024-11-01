@@ -221,6 +221,14 @@ static int entity_add_key_attributes(struct flb_cloudwatch *ctx, struct cw_flush
             goto error;
         }
     }
+    if(stream->entity->key_attributes->account_id != NULL && strlen(stream->entity->key_attributes->account_id) != 0) {
+        if (!snprintf(ts,KEY_ATTRIBUTES_MAX_LEN, ",%s%s%s","\"AwsAccountId\":\"",stream->entity->key_attributes->account_id,"\"")) {
+            goto error;
+        }
+        if (!try_to_write(buf->out_buf, offset, buf->out_buf_size,ts,0)) {
+            goto error;
+        }
+    }
     if (!try_to_write(buf->out_buf, offset, buf->out_buf_size,
               "},", 2)) {
         goto error;
@@ -359,8 +367,9 @@ static int init_put_payload(struct flb_cloudwatch *ctx, struct cw_flush *buf,
         goto error;
     }
     // If we are missing the service name, the entity will get rejected by the frontend anyway
-    // so do not emit entity unless service name is filled
-    if(ctx->add_entity && stream->entity != NULL && stream->entity->key_attributes != NULL && stream->entity->key_attributes->name != NULL) {
+    // so do not emit entity unless service name is filled. If we are missing account ID
+    // it is considered not having sufficient information for entity therefore we should drop the entity.
+    if(ctx->add_entity && stream->entity != NULL && stream->entity->key_attributes != NULL && stream->entity->key_attributes->name != NULL && stream->entity->key_attributes->account_id != NULL) {
         if (!try_to_write(buf->out_buf, offset, buf->out_buf_size,
                       "\"entity\":{", 10)) {
             goto error;
@@ -1108,6 +1117,14 @@ void parse_entity(struct flb_cloudwatch *ctx, entity *entity, msgpack_object map
                 flb_free(entity->attributes->instance_id);
             }
             entity->attributes->instance_id = flb_strndup(val.via.str.ptr, val.via.str.size);
+        }
+        if(strncmp(key.via.str.ptr, "aws_entity_account_id",key.via.str.size ) == 0 ) {
+            if(entity->key_attributes->account_id == NULL) {
+                entity->root_filter_count++;
+            } else {
+                flb_free(entity->key_attributes->account_id);
+            }
+            entity->key_attributes->account_id = flb_strndup(val.via.str.ptr, val.via.str.size);
         }
     }
     if(entity->key_attributes->name == NULL && entity->attributes->name_source == NULL &&entity->attributes->workload != NULL) {

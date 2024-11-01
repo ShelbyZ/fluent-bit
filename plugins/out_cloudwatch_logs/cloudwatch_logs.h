@@ -48,6 +48,7 @@ typedef struct entity_key_attributes {
     char *type;
     char *name;
     char *environment;
+    char *account_id;
 }entity_key_attributes;
 
 /* Attributes used for CloudWatch Entity object

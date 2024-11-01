@@ -63,6 +63,8 @@
 #define FLB_FILTER_AWS_AMI_ID_KEY_LEN                     6
 #define FLB_FILTER_AWS_ACCOUNT_ID_KEY                     "account_id"
 #define FLB_FILTER_AWS_ACCOUNT_ID_KEY_LEN                 10
+#define FLB_FILTER_AWS_ENTITY_ACCOUNT_ID_KEY              "aws_entity_account_id"
+#define FLB_FILTER_AWS_ENTITY_ACCOUNT_ID_KEY_LEN          21
 #define FLB_FILTER_AWS_HOSTNAME_KEY                       "hostname"
 #define FLB_FILTER_AWS_HOSTNAME_KEY_LEN                   8
 
