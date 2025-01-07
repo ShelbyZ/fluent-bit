@@ -104,6 +104,17 @@ struct flb_aws_client {
     int debug_only;
 };
 
+/* frees dynamic_headers */
+struct flb_http_client *flb_aws_client_request_basic_auth(
+                                               struct flb_aws_client *aws_client,
+                                               int method, const char *uri,
+                                               const char *body, size_t body_len,
+                                               struct flb_aws_header
+                                               *dynamic_headers,
+                                               size_t dynamic_headers_len,
+                                               char *header_name,
+                                               char* auth_token);
+
 /*
  * Frees the aws_client, the internal flb_http_client, error_code,
  * and flb_upstream.
@@ -150,6 +161,13 @@ flb_sds_t flb_aws_error(char *response, size_t response_len);
  */
 void flb_aws_print_error(char *response, size_t response_len,
                          char *api, struct flb_output_instance *ins);
+
+/*
+ * Error parsing for json APIs that respond with a
+ * Code and Message fields for error responses.
+ */
+void flb_aws_print_error_code(char *response, size_t response_len,
+                              char *api);
 
 /* Similar to 'flb_aws_print_error', but for APIs that return XML */
 void flb_aws_print_xml_error(char *response, size_t response_len,
