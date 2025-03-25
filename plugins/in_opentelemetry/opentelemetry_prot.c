@@ -280,6 +280,13 @@ int opentelemetry_prot_handle(struct flb_opentelemetry *ctx, struct http_conn *c
         return -1;
     }
 
+    if (request->data.len <= 0) {
+        flb_sds_destroy(tag);
+        mk_mem_free(uri);
+        send_response(conn, 400, "error: no payload found\n");
+        return -1;
+    }
+
     if (strcmp(uri, "/v1/metrics") == 0) {
         ret = process_payload_metrics(ctx, conn, tag, session, request);
     }
