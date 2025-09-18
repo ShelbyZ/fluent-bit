@@ -34,6 +34,7 @@
 #include <string.h>
 
 #include <fluent-bit/flb_info.h>
+#include <fluent-bit/flb_compat.h>
 #include <fluent-bit/flb_kv.h>
 #include <fluent-bit/flb_log.h>
 #include <fluent-bit/flb_mem.h>
@@ -594,7 +595,17 @@ static int add_host_and_content_length(struct flb_http_client *c)
         tmp = flb_sds_copy(host, out_host, strlen(out_host));
     }
     else {
-        tmp = flb_sds_printf(&host, "%s:%i", out_host, out_port);
+        struct in6_addr addr;
+        
+        /* Check if out_host is an unbracketed IPv6 address */
+        if (out_host && out_host[0] != '[' && inet_pton(AF_INET6, out_host, &addr) == 1) {
+            /* IPv6 address needs brackets when combined with port */
+            tmp = flb_sds_printf(&host, "[%s]:%i", out_host, out_port);
+        }
+        else {
+            /* IPv4 address, domain name, or already bracketed IPv6 */
+            tmp = flb_sds_printf(&host, "%s:%i", out_host, out_port);
+        }
     }
 
     if (!tmp) {
