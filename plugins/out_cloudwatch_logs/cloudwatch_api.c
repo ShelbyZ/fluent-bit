@@ -1122,10 +1122,35 @@ static char* find_fallback_environment(struct flb_cloudwatch *ctx, entity *entit
 static void set_entity_field(char **field, struct flb_ra_value *val,
                              int *filter_count, int *found_flag)
 {
+    const char *new_val;
+    size_t new_len;
+    
     if (!val || val->type != FLB_RA_STRING) {
         return;
     }
     
+    /* Extract the new value */
+    if (val->storage == FLB_RA_REF) {
+        new_val = val->val.ref.buf;
+        new_len = val->val.ref.len;
+    }
+    else {
+        new_val = val->val.string;
+        new_len = flb_sds_len(val->val.string);
+    }
+    
+    /* Only update if the value has changed to avoid unnecessary reallocations */
+    if (*field != NULL) {
+        size_t existing_len = strlen(*field);
+        if (existing_len == new_len && memcmp(*field, new_val, new_len) == 0) {
+            /* Value unchanged, skip reallocation */
+            return;
+        }
+        /* Value changed, free old value */
+        flb_free(*field);
+    }
+    
+    /* Update filter counts on first assignment */
     if (found_flag && !*found_flag) {
         if (filter_count) {
             (*filter_count)++;
@@ -1136,16 +1161,8 @@ static void set_entity_field(char **field, struct flb_ra_value *val,
         (*filter_count)++;
     }
     
-    if (*field) {
-        flb_free(*field);
-    }
-    
-    if (val->storage == FLB_RA_REF) {
-        *field = flb_strndup(val->val.ref.buf, val->val.ref.len);
-    }
-    else {
-        *field = flb_strndup(val->val.string, flb_sds_len(val->val.string));
-    }
+    /* Allocate new value */
+    *field = flb_strndup(new_val, new_len);
 }
 
 void parse_entity(struct flb_cloudwatch *ctx, entity *entity,
