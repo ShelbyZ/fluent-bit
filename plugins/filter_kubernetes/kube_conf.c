@@ -237,23 +237,24 @@ void flb_kube_conf_destroy(struct flb_kube *ctx)
     flb_free(ctx->podname);
     flb_free(ctx->auth);
 
+    /* Destroy upstreams before their associated TLS contexts to avoid use-after-free */
     if (ctx->kubelet_upstream) {
         flb_upstream_destroy(ctx->kubelet_upstream);
     }
     if (ctx->kube_api_upstream) {
         flb_upstream_destroy(ctx->kube_api_upstream);
     }
-
-    if (ctx->aws_pod_association_tls) {
-        flb_tls_destroy(ctx->aws_pod_association_tls);
-    }
-
     if (ctx->aws_pod_association_upstream) {
         flb_upstream_destroy(ctx->aws_pod_association_upstream);
     }
 
     if (ctx->platform) {
         flb_free(ctx->platform);
+    }
+
+    /* Now safe to destroy TLS contexts after upstreams are cleaned up */
+    if (ctx->aws_pod_association_tls) {
+        flb_tls_destroy(ctx->aws_pod_association_tls);
     }
 
 #ifdef FLB_HAVE_TLS
