@@ -1565,6 +1565,30 @@ cmt_error:
 }
 
 /*
+ * Sweep the stream list and destroy any streams past their expiration.
+ * The existing expiry check in get_or_create_log_stream only runs when
+ * iterating past non-matching streams during a lookup, so streams for
+ * pods that have died and stopped sending logs are never looked up again
+ * and accumulate indefinitely. Each dead stream holds an entity struct
+ * with heap-allocated fields, causing a slow unbounded growth over time.
+ */
+static void evict_expired_log_streams(struct flb_cloudwatch *ctx)
+{
+    struct log_stream *stream;
+    struct mk_list *tmp;
+    struct mk_list *head;
+    time_t now = time(NULL);
+
+    mk_list_foreach_safe(head, tmp, &ctx->streams) {
+        stream = mk_list_entry(head, struct log_stream, _head);
+        if (stream->expiration < now) {
+            mk_list_del(&stream->_head);
+            log_stream_destroy(stream);
+        }
+    }
+}
+
+/*
  * Main routine- processes msgpack and sends in batches which ignore the empty ones
  * return value is the number of events processed and send.
  */
@@ -1575,6 +1599,8 @@ int process_and_send(struct flb_cloudwatch *ctx, const char *input_plugin,
 {
     int ret;
     int i = 0;
+
+    evict_expired_log_streams(ctx);
 
     if (event_type == FLB_EVENT_TYPE_LOGS) {
         i = process_log_events(ctx, input_plugin,
