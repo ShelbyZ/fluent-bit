@@ -1215,6 +1215,8 @@ void parse_entity(struct flb_cloudwatch *ctx, entity *entity,
 void update_or_create_entity(struct flb_cloudwatch *ctx, struct log_stream *stream,
                              const msgpack_object map)
 {
+        int entity_created = FLB_FALSE;
+
         if(stream->entity == NULL) {
             stream->entity = flb_malloc(sizeof(entity));
             if (stream->entity == NULL) {
@@ -1243,10 +1245,15 @@ void update_or_create_entity(struct flb_cloudwatch *ctx, struct log_stream *stre
             stream->entity->service_name_found = 0;
             stream->entity->environment_found = 0;
             stream->entity->name_source_found = 0;
+            entity_created = FLB_TRUE;
         }
-        parse_entity(ctx,stream->entity,map, map.via.map.size);
-        if (!stream->entity) {
-            flb_plg_warn(ctx->ins, "Failed to generate entity");
+
+        /* Only parse entity metadata when first created to avoid per-record allocation churn */
+        if (entity_created == FLB_TRUE) {
+            parse_entity(ctx,stream->entity,map, map.via.map.size);
+            if (!stream->entity) {
+                flb_plg_warn(ctx->ins, "Failed to generate entity");
+            }
         }
 }
 
