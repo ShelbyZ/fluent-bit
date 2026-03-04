@@ -50,18 +50,9 @@ struct task_args {
 pthread_mutex_t metadata_mutex;
 pthread_t background_thread;
 struct task_args *task_args = {0};
-struct mk_event_loop *evl;
 
 void *update_pod_service_map(void *arg)
 {
-    flb_engine_evl_init();
-    evl = mk_event_loop_create(256);
-    if (evl == NULL) {
-        flb_plg_error(task_args->ctx->ins,
-                      "Failed to create event loop for pod service map");
-        return NULL;
-    }
-    flb_engine_evl_set(evl);
     while (1) {
         fetch_pod_service_map(task_args->ctx,task_args->api_server_url,&metadata_mutex);
         flb_plg_debug(task_args->ctx->ins, "Updating pod to service map after %d seconds", task_args->ctx->aws_pod_service_map_refresh_interval);
@@ -823,9 +814,6 @@ static int cb_kube_exit(void *data, struct flb_config *config)
 
     if (task_args) {
         flb_free(task_args);
-    }
-    if (evl) {
-        mk_event_loop_destroy(evl);
     }
     return 0;
 }
