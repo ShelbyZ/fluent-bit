@@ -27,6 +27,7 @@
 #include <fluent-bit/flb_output_plugin.h>
 #include <fluent-bit/flb_jsmn.h>
 #include <fluent-bit/flb_env.h>
+#include <fluent-bit/flb_upstream.h>
 
 #include <stdlib.h>
 #include <sys/types.h>
@@ -544,12 +545,14 @@ struct flb_http_client *request_do(struct flb_aws_client *aws_client,
         c = NULL;
     }
 
+    flb_upstream_conn_recycle(u_conn, FLB_FALSE);
     flb_upstream_conn_release(u_conn);
     flb_sds_destroy(signature);
     return c;
 
 error:
     if (u_conn) {
+        flb_upstream_conn_recycle(u_conn, FLB_FALSE);
         flb_upstream_conn_release(u_conn);
     }
     if (signature) {

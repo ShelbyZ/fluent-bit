@@ -398,6 +398,7 @@ static int get_meta_info_from_request(struct flb_kube *ctx,
     ret = refresh_token_if_needed(ctx);
     if (ret == -1) {
         flb_plg_error(ctx->ins, "failed to refresh token");
+        flb_upstream_conn_recycle(u_conn, FLB_FALSE);
         flb_upstream_conn_release(u_conn);
         return -1;
     }
@@ -425,6 +426,7 @@ static int get_meta_info_from_request(struct flb_kube *ctx,
                           c->resp.payload);
         }
         flb_http_client_destroy(c);
+        flb_upstream_conn_recycle(u_conn, FLB_FALSE);
         flb_upstream_conn_release(u_conn);
         return -1;
     }
@@ -432,8 +434,9 @@ static int get_meta_info_from_request(struct flb_kube *ctx,
     packed = flb_pack_json(c->resp.payload, c->resp.payload_size,
                                    buffer, size, root_type, NULL);
 
-    /* release resources */
+    /* release resources - mark connection as non-recyclable to prevent memory leak */
     flb_http_client_destroy(c);
+    flb_upstream_conn_recycle(u_conn, FLB_FALSE);
     flb_upstream_conn_release(u_conn);
 
     return packed;
