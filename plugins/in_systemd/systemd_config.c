@@ -62,7 +62,7 @@ struct flb_systemd_config *flb_systemd_config_create(struct flb_input_instance *
     ret = flb_input_config_map_set(ins, (void *)ctx);
     if (ret == -1) {
         flb_plg_error(ins, "unable to load configuration");
-        flb_free(config);
+        flb_free(ctx);
         return NULL;
     }
 

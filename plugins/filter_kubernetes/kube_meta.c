@@ -2338,6 +2338,9 @@ static inline int flb_kube_pod_meta_get(struct flb_kube *ctx,
             flb_hash_table_get_by_id(ctx->hash_table, id, meta->cache_key,
                                      &hash_meta_buf, &hash_meta_size);
         }
+        else {
+            flb_free(tmp_hash_meta_buf);
+        }
     }
 
     /*
@@ -2416,6 +2419,9 @@ static inline int flb_kube_namespace_meta_get(struct flb_kube *ctx,
             flb_free(tmp_hash_meta_buf);
             flb_hash_table_get_by_id(ctx->namespace_hash_table, id, meta->cache_key,
                                      &hash_meta_buf, &hash_meta_size);
+        }
+        else {
+            flb_free(tmp_hash_meta_buf);
         }
     }
 

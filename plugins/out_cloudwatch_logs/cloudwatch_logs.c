@@ -50,6 +50,9 @@ static struct flb_aws_header content_type_header = {
     .val_len = 26,
 };
 
+/* Forward declaration */
+struct cw_flush *new_buffer();
+
 static int validate_log_group_class(struct flb_cloudwatch *ctx)
 {
     if (ctx->create_group == FLB_FALSE) {
@@ -390,6 +393,13 @@ static int cb_cloudwatch_init(struct flb_output_instance *ins,
     /* Export context */
     flb_output_set_context(ins, ctx);
 
+    /* Allocate reusable flush buffer */
+    ctx->flush_buf = new_buffer();
+    if (!ctx->flush_buf) {
+        flb_plg_error(ctx->ins, "Failed to allocate flush buffer");
+        goto error;
+    }
+
     return 0;
 
 error:
@@ -447,22 +457,16 @@ static void cb_cloudwatch_flush(struct flb_event_chunk *event_chunk,
     (void) i_ins;
     (void) config;
 
-    struct cw_flush *buf;
+    struct cw_flush *buf = ctx->flush_buf;
 
-    buf = new_buffer();
-    if (!buf) {
-        FLB_OUTPUT_RETURN(FLB_RETRY);
-    }
+    reset_flush_buf(ctx, buf);
 
     event_count = process_and_send(ctx, i_ins->p->name, buf, event_chunk->tag, event_chunk->data, event_chunk->size,
                                    event_chunk->type, config);
     if (event_count < 0) {
         flb_plg_error(ctx->ins, "Failed to send events");
-        cw_flush_destroy(buf);
         FLB_OUTPUT_RETURN(FLB_RETRY);
     }
-
-    cw_flush_destroy(buf);
 
     FLB_OUTPUT_RETURN(FLB_OK);
 }
@@ -474,6 +478,10 @@ void flb_cloudwatch_ctx_destroy(struct flb_cloudwatch *ctx)
     struct mk_list *head;
 
     if (ctx != NULL) {
+        if (ctx->flush_buf) {
+            cw_flush_destroy(ctx->flush_buf);
+        }
+
         if (ctx->base_aws_provider) {
             flb_aws_provider_destroy(ctx->base_aws_provider);
         }

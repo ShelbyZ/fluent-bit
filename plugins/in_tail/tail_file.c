@@ -1390,6 +1390,7 @@ int flb_tail_file_append(char *path, struct stat *st, int mode,
     ret = set_file_position(ctx, file);
     if (ret == -1) {
         flb_tail_file_remove(file);
+        file = NULL;
         goto error;
     }
 
@@ -1410,7 +1411,7 @@ int flb_tail_file_append(char *path, struct stat *st, int mode,
 
     if (file->sl_log_event_encoder == NULL) {
         flb_tail_file_remove(file);
-
+        file = NULL;
         goto error;
     }
 
@@ -1419,7 +1420,7 @@ int flb_tail_file_append(char *path, struct stat *st, int mode,
 
     if (file->ml_log_event_encoder == NULL) {
         flb_tail_file_remove(file);
-
+        file = NULL;
         goto error;
     }
 
@@ -1435,6 +1436,24 @@ error:
         }
         if (file->name) {
             flb_free(file->name);
+        }
+        if (file->real_name) {
+            flb_free(file->real_name);
+        }
+        if (file->orig_name) {
+            flb_free(file->orig_name);
+        }
+        if (file->hash_key) {
+            flb_sds_destroy(file->hash_key);
+        }
+        if (file->tag_buf) {
+            flb_free(file->tag_buf);
+        }
+        if (file->dmode_buf) {
+            flb_sds_destroy(file->dmode_buf);
+        }
+        if (file->dmode_lastline) {
+            flb_sds_destroy(file->dmode_lastline);
         }
         flb_free(file);
     }

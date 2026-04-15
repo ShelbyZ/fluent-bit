@@ -192,6 +192,8 @@ static int cb_aws_init(struct flb_filter_instance *f_ins,
                                    FLB_IO_TCP, NULL);
     if (!upstream) {
         flb_plg_debug(ctx->ins, "unable to connect to EC2 IMDS");
+        flb_aws_client_destroy(ctx->aws_ec2_filter_client);
+        flb_free(ctx);
         return -1;
     }
 
@@ -206,6 +208,7 @@ static int cb_aws_init(struct flb_filter_instance *f_ins,
                                            ctx->aws_ec2_filter_client);
     if (!ctx->client_imds) {
         flb_plg_error(ctx->ins, "failed to create aws client");
+        flb_aws_client_destroy(ctx->aws_ec2_filter_client);
         flb_free(ctx);
         return -1;
     }
@@ -215,6 +218,8 @@ static int cb_aws_init(struct flb_filter_instance *f_ins,
     ret = flb_filter_config_map_set(f_ins, (void *) ctx);
     if (ret == -1) {
         flb_plg_error(f_ins, "configuration error");
+        flb_aws_imds_destroy(ctx->client_imds);
+        flb_aws_client_destroy(ctx->aws_ec2_filter_client);
         flb_free(ctx);
         return -1;
     }
@@ -222,11 +227,9 @@ static int cb_aws_init(struct flb_filter_instance *f_ins,
     /* Retrieve metadata */
     ret = get_ec2_metadata(ctx);
     if (ret < 0) {
-        /* If the metadata fetch fails, the plugin continues to work. */
-        /* Every flush will attempt to fetch ec2 metadata, if needed. */
-        /* If the error is unrecoverable, it exits and does not retry. */
-        /* e.g.: unrecoverable errors might be related to invalid configuration. */
         if (ret == FLB_FILTER_AWS_CONFIGURATION_ERROR) {
+            flb_aws_imds_destroy(ctx->client_imds);
+            flb_aws_client_destroy(ctx->aws_ec2_filter_client);
             flb_free(ctx);
             return -1;
         }

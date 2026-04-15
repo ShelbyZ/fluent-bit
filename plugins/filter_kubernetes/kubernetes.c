@@ -813,13 +813,15 @@ static int cb_kube_exit(void *data, struct flb_config *config)
     struct flb_kube *ctx;
 
     ctx = data;
-    
-    flb_kube_conf_destroy(ctx);
+
+    /* Cancel background thread BEFORE destroying ctx it references */
     if (background_thread) {
         pthread_cancel(background_thread);
         pthread_join(background_thread, NULL);
     }
     pthread_mutex_destroy(&metadata_mutex);
+
+    flb_kube_conf_destroy(ctx);
 
     if (task_args) {
         flb_free(task_args);

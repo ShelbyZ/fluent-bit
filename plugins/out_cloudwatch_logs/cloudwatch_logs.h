@@ -214,6 +214,9 @@ struct flb_cloudwatch {
     int kubernete_metadata_enabled;
 
     int add_entity;
+
+    /* reusable flush buffer — allocated once in init, freed in exit */
+    struct cw_flush *flush_buf;
 };
 
 void flb_cloudwatch_ctx_destroy(struct flb_cloudwatch *ctx);

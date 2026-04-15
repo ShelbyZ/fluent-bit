@@ -129,6 +129,7 @@ static int set_rules(struct grep_ctx *ctx, struct flb_filter_instance *f_ins)
         if (rule->regex_pattern == NULL) {
             flb_errno();
             delete_rules(ctx);
+            flb_sds_destroy(rule->field);
             flb_free(rule);
             flb_utils_split_free(split);
             return -1;
@@ -142,6 +143,8 @@ static int set_rules(struct grep_ctx *ctx, struct flb_filter_instance *f_ins)
         if (!rule->ra) {
             flb_plg_error(ctx->ins, "invalid record accessor? '%s'", rule->field);
             delete_rules(ctx);
+            flb_sds_destroy(rule->field);
+            flb_free(rule->regex_pattern);
             flb_free(rule);
             return -1;
         }
@@ -152,6 +155,9 @@ static int set_rules(struct grep_ctx *ctx, struct flb_filter_instance *f_ins)
             flb_plg_error(ctx->ins, "could not compile regex pattern '%s'",
                       rule->regex_pattern);
             delete_rules(ctx);
+            flb_sds_destroy(rule->field);
+            flb_free(rule->regex_pattern);
+            flb_ra_destroy(rule->ra);
             flb_free(rule);
             return -1;
         }
@@ -385,7 +391,6 @@ static int cb_grep_filter(const void *data, size_t bytes,
         ret = FLB_FILTER_NOTOUCH;
     }
 
-    flb_log_event_decoder_destroy(&log_decoder);
     flb_log_event_encoder_destroy(&log_encoder);
 
     return ret;
