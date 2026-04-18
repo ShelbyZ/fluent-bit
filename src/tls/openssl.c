@@ -869,6 +869,22 @@ static void *tls_context_create(int verify,
 #endif
     pthread_mutex_init(&ctx->mutex, NULL);
 
+    /*
+     * Disable the OpenSSL session cache.
+     *
+     * Fluent Bit manages connection reuse at the upstream pool level.
+     * OpenSSL's built-in session cache is redundant here and accumulates
+     * TLS session state (BIO copies, custom extension handlers, ASN.1
+     * structures) that is never explicitly freed, causing steady RSS growth
+     * proportional to the number of TLS handshakes performed over the
+     * process lifetime.
+     *
+     * SSL_SESS_CACHE_OFF disables both client-side and server-side caching.
+     * SSL_OP_NO_TICKET disables TLS 1.3 session tickets which also accumulate.
+     */
+    SSL_CTX_set_session_cache_mode(ssl_ctx, SSL_SESS_CACHE_OFF);
+    SSL_CTX_set_options(ssl_ctx, SSL_OP_NO_TICKET);
+
     /* Verify peer: by default OpenSSL always verify peer */
     if (verify == FLB_FALSE) {
         SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_NONE, NULL);
