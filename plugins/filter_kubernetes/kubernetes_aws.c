@@ -279,8 +279,17 @@ int fetch_pod_service_map(struct flb_kube *ctx, char *api_server_url,
             parse_pod_service_map(ctx, c->resp.payload, c->resp.payload_size, mutex);
         }
 
-        /* Cleanup - mark connection as non-recyclable to prevent memory leak */
+        /* Cleanup - mark connection as non-recyclable to prevent memory leak.
+         * Explicitly destroy the TLS session before releasing the connection
+         * to avoid accumulation of SSL object state in the deferred destroy
+         * queue. Each pod-service-map fetch creates a new SSL* via
+         * tls_session_create; without explicit cleanup the SSL* objects
+         * accumulate until destroy_conn is eventually called by the event loop.
+         */
         flb_http_client_destroy(c);
+        if (u_conn->tls_session != NULL) {
+            flb_tls_session_destroy(u_conn->tls_session);
+        }
         flb_upstream_conn_recycle(u_conn, FLB_FALSE);
         flb_upstream_conn_release(u_conn);
     }
