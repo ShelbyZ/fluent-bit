@@ -156,6 +156,7 @@ if(FLB_AWS)
     aws_util.c
     aws_compress.c
     aws_aggregation.c
+    aws_kpl.c
     aws_credentials.c
     aws_credentials_ec2.c
     aws_credentials_sts.c

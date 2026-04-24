@@ -313,6 +313,20 @@ static int cb_kinesis_init(struct flb_output_instance *ins,
     /* Export context */
     flb_output_set_context(ins, ctx);
 
+    if (ctx->kpl_aggregation && ctx->simple_aggregation) {
+        flb_plg_error(ctx->ins,
+                      "'aggregation' and 'simple_aggregation' cannot both be enabled");
+        goto error;
+    }
+
+    if (ctx->kpl_aggregation) {
+        ctx->kpl_agg = flb_kpl_aggregator_create(MAX_EVENT_SIZE);
+        if (!ctx->kpl_agg) {
+            flb_plg_error(ctx->ins, "Failed to create KPL aggregator");
+            goto error;
+        }
+    }
+
     return 0;
 
 error:
@@ -363,6 +377,8 @@ static struct flush *new_flush_buffer(struct flb_kinesis *ctx, const char *tag, 
         }
         buf->agg_buf_initialized = FLB_TRUE;
     }
+
+    buf->kpl_agg = ctx->kpl_agg;
 
     return buf;
 }
@@ -435,6 +451,10 @@ void flb_kinesis_ctx_destroy(struct flb_kinesis *ctx)
 
         if (ctx->uuid) {
             flb_free(ctx->uuid);
+        }
+
+        if (ctx->kpl_agg) {
+            flb_kpl_aggregator_destroy(ctx->kpl_agg);
         }
 
         flb_free(ctx);
@@ -534,6 +554,15 @@ static struct flb_config_map config_map[] = {
      0, FLB_TRUE, offsetof(struct flb_kinesis, simple_aggregation),
      "Enable simple aggregation to combine multiple records into single API calls. "
      "This reduces the number of requests and can improve throughput."
+    },
+
+    {
+     FLB_CONFIG_MAP_BOOL, "aggregation", "false",
+     0, FLB_TRUE, offsetof(struct flb_kinesis, kpl_aggregation),
+     "Enable KPL (Kinesis Producer Library) aggregation. Packs multiple records "
+     "into a single Kinesis record using the KPL binary format. Consumers must "
+     "use KCL or a KPL-compatible library to decode. "
+     "Cannot be combined with simple_aggregation."
     },
 
     {

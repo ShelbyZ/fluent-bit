@@ -38,6 +38,7 @@
 #include <fluent-bit/flb_base64.h>
 #include <fluent-bit/aws/flb_aws_aggregation.h>
 #include <fluent-bit/aws/flb_aws_compress.h>
+#include <fluent-bit/aws/flb_aws_kpl.h>
 
 #include <monkey/mk_core.h>
 #include <msgpack.h>
@@ -614,6 +615,131 @@ static int send_log_events(struct flb_kinesis *ctx, struct flush *buf) {
 }
 
 /*
+ * Flush one KPL aggregated record into the events array and send it.
+ * The KPL blob is base64-encoded exactly like a normal record.
+ */
+static int send_kpl_record(struct flb_kinesis *ctx, struct flush *buf,
+                           uint8_t *kpl_buf, size_t kpl_len,
+                           const char *pkey)
+{
+    int ret;
+    size_t b64_len;
+    size_t size;
+    struct kinesis_event *event;
+
+    size = (kpl_len * 1.5) + 4;
+    if (buf->event_buf == NULL || buf->event_buf_size < size) {
+        flb_free(buf->event_buf);
+        buf->event_buf = flb_malloc(size);
+        if (!buf->event_buf) {
+            flb_errno();
+            return -1;
+        }
+        buf->event_buf_size = size;
+    }
+
+    ret = flb_base64_encode((unsigned char *) buf->event_buf, size, &b64_len,
+                            kpl_buf, kpl_len);
+    if (ret != 0) {
+        flb_errno();
+        return -1;
+    }
+
+    if (buf->tmp_buf_size < b64_len) {
+        flb_plg_error(ctx->ins, "KPL record too large for tmp_buf");
+        return -1;
+    }
+
+    memcpy(buf->tmp_buf, buf->event_buf, b64_len);
+
+    event = &buf->events[0];
+    event->json = buf->tmp_buf;
+    event->len  = b64_len;
+    event->timestamp.tv_sec  = 0;
+    event->timestamp.tv_nsec = 0;
+    buf->event_index = 1;
+
+    buf->data_size = PUT_RECORDS_HEADER_LEN + PUT_RECORDS_FOOTER_LEN
+                   + strlen(ctx->stream_name)
+                   + b64_len + PUT_RECORDS_PER_RECORD_LEN;
+
+    /*
+     * Temporarily override the uuid used as partition key so write_event()
+     * picks up the KPL partition key (first key in the aggregated record).
+     * We restore it afterwards.
+     */
+    char *saved_uuid = ctx->uuid;
+    ctx->uuid = (char *) pkey;
+
+    ret = send_log_events(ctx, buf);
+
+    ctx->uuid = saved_uuid;
+    return ret;
+}
+
+/*
+ * Add one event to the KPL aggregator.
+ * Flushes and sends the current KPL record if the buffer is full, then retries.
+ */
+static int add_event_kpl(struct flb_kinesis *ctx, struct flush *buf,
+                         const msgpack_object *obj, struct flb_time *tms,
+                         struct flb_config *config)
+{
+    int ret;
+    uint8_t    *kpl_buf = NULL;
+    size_t      kpl_len = 0;
+    const char *pkey    = NULL;
+    char       *tmp_buf_ptr;
+    size_t      written;
+
+    /* Serialise the msgpack object to JSON + newline into tmp_buf */
+    tmp_buf_ptr = buf->tmp_buf + buf->tmp_buf_offset;
+    ret = flb_msgpack_to_json(tmp_buf_ptr,
+                              buf->tmp_buf_size - buf->tmp_buf_offset,
+                              obj, config->json_escape_unicode);
+    if (ret <= 0) {
+        return 1; /* no space — caller should send and retry */
+    }
+    written = (size_t) ret;
+
+    if (written <= 2) {
+        flb_plg_debug(ctx->ins, "Found empty log message, %s", ctx->stream_name);
+        return 0; /* discard */
+    }
+
+    if ((written + 1) >= MAX_EVENT_SIZE) {
+        flb_plg_warn(ctx->ins, "[size=%zu] Discarding record too large for KPL, %s",
+                     written + 1, ctx->stream_name);
+        return 0;
+    }
+
+    /* append newline */
+    tmp_buf_ptr[written] = '\n';
+    written++;
+
+retry_kpl_add:
+    ret = flb_kpl_aggregator_add(buf->kpl_agg,
+                                 ctx->uuid, strlen(ctx->uuid),
+                                 (const uint8_t *)tmp_buf_ptr, written);
+    if (ret == 1) {
+        /* buffer full — flush current KPL record, then retry */
+        ret = flb_kpl_aggregator_flush(buf->kpl_agg, &kpl_buf, &kpl_len, &pkey);
+        if (ret < 0) {
+            return -1;
+        }
+        ret = send_kpl_record(ctx, buf, kpl_buf, kpl_len, pkey);
+        flb_free(kpl_buf);
+        reset_flush_buf(ctx, buf);
+        if (ret < 0) {
+            return -1;
+        }
+        goto retry_kpl_add;
+    }
+
+    return (ret == -1) ? -1 : 0;
+}
+
+/*
  * Processes the msgpack object, sends the current batch if needed
  */
 static int add_event(struct flb_kinesis *ctx, struct flush *buf,
@@ -627,6 +753,11 @@ static int add_event(struct flb_kinesis *ctx, struct flush *buf,
 
     if (buf->event_index == 0) {
         reset_flush_buf(ctx, buf);
+    }
+
+    /* KPL aggregation path */
+    if (ctx->kpl_aggregation) {
+        return add_event_kpl(ctx, buf, obj, tms, config);
     }
 
     /* Use simple aggregation if enabled */
@@ -815,7 +946,23 @@ int process_and_send_to_kinesis(struct flb_kinesis *ctx, struct flush *buf,
     flb_log_event_decoder_destroy(&log_decoder);
 
     /* send any remaining events */
-    if (ctx->simple_aggregation) {
+    if (ctx->kpl_aggregation) {
+        uint8_t    *kpl_buf = NULL;
+        size_t      kpl_len = 0;
+        const char *pkey    = NULL;
+        if (flb_kpl_aggregator_count(buf->kpl_agg) > 0) {
+            ret = flb_kpl_aggregator_flush(buf->kpl_agg, &kpl_buf, &kpl_len, &pkey);
+            if (ret == 0) {
+                ret = send_kpl_record(ctx, buf, kpl_buf, kpl_len, pkey);
+                flb_free(kpl_buf);
+                reset_flush_buf(ctx, buf);
+                if (ret < 0) {
+                    goto error;
+                }
+            }
+        }
+    }
+    else if (ctx->simple_aggregation) {
         ret = send_aggregated_record(ctx, buf);
     }
     else {

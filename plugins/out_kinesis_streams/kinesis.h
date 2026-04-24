@@ -27,6 +27,7 @@
 #include <fluent-bit/flb_aws_util.h>
 #include <fluent-bit/flb_signv4.h>
 #include <fluent-bit/aws/flb_aws_aggregation.h>
+#include <fluent-bit/aws/flb_aws_kpl.h>
 
 #define DEFAULT_TIME_KEY_FORMAT "%Y-%m-%dT%H:%M:%S"
 
@@ -60,6 +61,9 @@ struct flush {
     /* aggregation buffer for simple_aggregation mode */
     struct flb_aws_agg_buffer agg_buf;
     int agg_buf_initialized;
+
+    /* KPL aggregator context (NULL when kpl_aggregation is disabled) */
+    struct flb_kpl_aggregator *kpl_agg;
 
     int records_sent;
     int records_processed;
@@ -97,7 +101,8 @@ struct flb_kinesis {
     const char *log_key;
     const char *external_id;
     int retry_requests;
-    int simple_aggregation;
+    int simple_aggregation;  /* concatenate records into larger payloads (no special encoding) */
+    int kpl_aggregation;     /* KPL binary format; requires KCL consumer to decode */
     int compression;
     char *sts_endpoint;
     int custom_endpoint;
@@ -109,6 +114,9 @@ struct flb_kinesis {
 
     /* must be freed on shutdown if custom_endpoint is not set */
     char *endpoint;
+
+    /* KPL aggregator — created at init, shared across flushes, destroyed at exit */
+    struct flb_kpl_aggregator *kpl_agg;
 
     /* Plugin output instance reference */
     struct flb_output_instance *ins;
