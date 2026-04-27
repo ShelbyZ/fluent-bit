@@ -143,10 +143,13 @@ static flb_sds_t random_partition_key(const char *tag)
 }
 
 /*
- * Writes a log event to the output buffer
+ * Writes a log event to the output buffer.
+ * partition_key: if non-NULL, used verbatim as the PartitionKey value.
+ *                if NULL, falls back to the random uuid+hash method.
  */
 static int write_event(struct flb_kinesis *ctx, struct flush *buf,
-                       struct kinesis_event *event, int *offset)
+                       struct kinesis_event *event, int *offset,
+                       const char *partition_key)
 {
     flb_sds_t tag_timestamp = NULL;
 
@@ -165,23 +168,33 @@ static int write_event(struct flb_kinesis *ctx, struct flush *buf,
         goto error;
     }
 
-    if (!try_to_write(buf->out_buf, offset, buf->out_buf_size,
-                      ctx->uuid, 10)) {
-        goto error;
+    if (partition_key != NULL) {
+        /* Use the provided key directly (KPL path or user-configured key) */
+        if (!try_to_write(buf->out_buf, offset, buf->out_buf_size,
+                          partition_key, 0)) {
+            goto error;
+        }
     }
+    else {
+        /* Random fallback: uuid prefix + tag-based hash */
+        if (!try_to_write(buf->out_buf, offset, buf->out_buf_size,
+                          ctx->uuid, 10)) {
+            goto error;
+        }
 
-    tag_timestamp = random_partition_key(buf->tag);
-    if (!tag_timestamp) {
-        flb_plg_error(ctx->ins, "failed to generate partition key for %s", buf->tag);
-        goto error;
-    }
+        tag_timestamp = random_partition_key(buf->tag);
+        if (!tag_timestamp) {
+            flb_plg_error(ctx->ins, "failed to generate partition key for %s", buf->tag);
+            goto error;
+        }
 
-    if (!try_to_write(buf->out_buf, offset, buf->out_buf_size,
-                      tag_timestamp, 0)) {
+        if (!try_to_write(buf->out_buf, offset, buf->out_buf_size,
+                          tag_timestamp, 0)) {
+            flb_sds_destroy(tag_timestamp);
+            goto error;
+        }
         flb_sds_destroy(tag_timestamp);
-        goto error;
     }
-    flb_sds_destroy(tag_timestamp);
 
     if (!try_to_write(buf->out_buf, offset, buf->out_buf_size,
                       "\"}", 2)) {
@@ -435,6 +448,27 @@ static int process_event(struct flb_kinesis *ctx, struct flush *buf,
     event->len = written;
     event->timestamp.tv_sec = tms->tm.tv_sec;
     event->timestamp.tv_nsec = tms->tm.tv_nsec;
+    event->partition_key = NULL;  /* use random fallback by default */
+
+    /* Extract partition key from record if configured */
+    if (ctx->partition_key && obj->type == MSGPACK_OBJECT_MAP) {
+        msgpack_object_map map = obj->via.map;
+        uint32_t k;
+        for (k = 0; k < map.size; k++) {
+            msgpack_object key   = map.ptr[k].key;
+            msgpack_object value = map.ptr[k].val;
+            if (key.type == MSGPACK_OBJECT_STR &&
+                key.via.str.size == strlen(ctx->partition_key) &&
+                strncmp(key.via.str.ptr, ctx->partition_key,
+                        key.via.str.size) == 0) {
+                if (value.type == MSGPACK_OBJECT_STR && value.via.str.size > 0) {
+                    /* Point directly into the msgpack buffer — valid for this flush */
+                    event->partition_key = value.via.str.ptr;
+                }
+                break;
+            }
+        }
+    }
 
     return 0;
 }
@@ -583,7 +617,7 @@ static int send_log_events(struct flb_kinesis *ctx, struct flush *buf) {
 
     for (i = 0; i < buf->event_index; i++) {
         event = &buf->events[i];
-        ret = write_event(ctx, buf, event, &offset);
+        ret = write_event(ctx, buf, event, &offset, event->partition_key);
         if (ret < 0) {
             flb_plg_error(ctx->ins, "Failed to write log record %d to "
                           "payload buffer, %s", i, ctx->stream_name);
@@ -653,27 +687,20 @@ static int send_kpl_record(struct flb_kinesis *ctx, struct flush *buf,
     memcpy(buf->tmp_buf, buf->event_buf, b64_len);
 
     event = &buf->events[0];
-    event->json = buf->tmp_buf;
-    event->len  = b64_len;
+    event->json          = buf->tmp_buf;
+    event->len           = b64_len;
     event->timestamp.tv_sec  = 0;
     event->timestamp.tv_nsec = 0;
+    event->partition_key = pkey;   /* full KPL partition key, used verbatim */
     buf->event_index = 1;
 
     buf->data_size = PUT_RECORDS_HEADER_LEN + PUT_RECORDS_FOOTER_LEN
                    + strlen(ctx->stream_name)
-                   + b64_len + PUT_RECORDS_PER_RECORD_LEN;
-
-    /*
-     * Temporarily override the uuid used as partition key so write_event()
-     * picks up the KPL partition key (first key in the aggregated record).
-     * We restore it afterwards.
-     */
-    char *saved_uuid = ctx->uuid;
-    ctx->uuid = (char *) pkey;
+                   + b64_len + PUT_RECORDS_PER_RECORD_LEN
+                   + strlen(pkey);  /* pkey replaces the uuid+hash fallback */
 
     ret = send_log_events(ctx, buf);
 
-    ctx->uuid = saved_uuid;
     return ret;
 }
 
@@ -821,6 +848,12 @@ retry_add_event:
 
     event = &buf->events[buf->event_index];
     event_bytes = event->len + PUT_RECORDS_PER_RECORD_LEN;
+    if (event->partition_key) {
+        /* Replace the fixed-key estimate with the actual configured key length */
+        event_bytes = event->len + PUT_RECORDS_PER_RECORD_LEN
+                    - 18  /* remove uuid(10)+hash(8) estimate */
+                    + strlen(event->partition_key);
+    }
 
     if ((buf->data_size + event_bytes) > PUT_RECORDS_PAYLOAD_SIZE) {
         if (buf->event_index <= 0) {
@@ -1287,11 +1320,14 @@ int put_records(struct flb_kinesis *ctx, struct flush *buf,
                 }
                 if (strncmp(error, "SerializationException", 22) == 0) {
                     /*
-                     * If this happens, we habe a bug in the code
-                     * User should send us the output to debug
+                     * If this happens, we have a bug in the code.
+                     * Use flb_plg_error (stderr) instead of printf (stdout)
+                     * to avoid the malformed request body being picked up by
+                     * the tail input reading container stdout logs, which
+                     * would cause an infinite loop of SerializationExceptions.
                      */
                     flb_plg_error(ctx->ins, "<<------Bug in Code------>>");
-                    printf("Malformed request: %s", buf->out_buf);
+                    flb_plg_error(ctx->ins, "Malformed request: %s", buf->out_buf);
                 }
                 flb_aws_print_error(c->resp.payload, c->resp.payload_size,
                                     "PutRecords", ctx->ins);

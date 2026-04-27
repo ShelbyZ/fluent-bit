@@ -76,6 +76,8 @@ struct kinesis_event {
     char *json;
     size_t len;
     struct timespec timestamp;
+    /* partition key for this event; NULL means use the random fallback */
+    const char *partition_key;
 };
 
 struct flb_kinesis {
@@ -111,6 +113,14 @@ struct flb_kinesis {
 
     /* in this plugin the 'random' partition key is a uuid + fluent tag + timestamp */
     char *uuid;
+
+    /*
+     * Optional user-configured partition key field name.
+     * When set, the value of this field in each log record is used as the
+     * Kinesis PartitionKey (truncated to 256 chars if needed).
+     * Falls back to the random uuid+hash method when the field is absent.
+     */
+    const char *partition_key;
 
     /* must be freed on shutdown if custom_endpoint is not set */
     char *endpoint;

@@ -557,6 +557,14 @@ static struct flb_config_map config_map[] = {
     },
 
     {
+     FLB_CONFIG_MAP_STR, "partition_key", NULL,
+     0, FLB_TRUE, offsetof(struct flb_kinesis, partition_key),
+     "Key name to use as the Kinesis PartitionKey. The value of this field "
+     "in each log record will be used. If the field is missing, a random "
+     "partition key is generated. Cannot be used with log_key."
+    },
+
+    {
      FLB_CONFIG_MAP_BOOL, "aggregation", "false",
      0, FLB_TRUE, offsetof(struct flb_kinesis, kpl_aggregation),
      "Enable KPL (Kinesis Producer Library) aggregation. Packs multiple records "
