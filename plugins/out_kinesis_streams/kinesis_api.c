@@ -661,7 +661,7 @@ static int send_log_events(struct flb_kinesis *ctx, struct flush *buf) {
 
 /*
  * Flush one KPL aggregated record into the events array and send it.
- * The KPL blob is base64-encoded exactly like a normal record.
+ * The KPL blob is optionally compressed then base64-encoded.
  */
 static int send_kpl_record(struct flb_kinesis *ctx, struct flush *buf,
                            uint8_t *kpl_buf, size_t kpl_len,
@@ -671,6 +671,35 @@ static int send_kpl_record(struct flb_kinesis *ctx, struct flush *buf,
     size_t b64_len;
     size_t size;
     struct kinesis_event *event;
+
+    /* Apply compression if configured, same as send_aggregated_record */
+    if (ctx->compression != FLB_AWS_COMPRESS_NONE) {
+        void *compressed_buf = NULL;
+        size_t compressed_size = 0;
+
+        ret = flb_aws_compression_b64_truncate_compress(ctx->compression,
+                                                        MAX_B64_EVENT_SIZE,
+                                                        kpl_buf, kpl_len,
+                                                        &compressed_buf,
+                                                        &compressed_size);
+        if (ret == -1) {
+            flb_plg_error(ctx->ins, "Unable to compress KPL record, discarding, %s",
+                          ctx->stream_name);
+            return 0;
+        }
+
+        if (buf->event_buf == NULL || buf->event_buf_size < compressed_size) {
+            flb_free(buf->event_buf);
+            buf->event_buf = compressed_buf;
+            buf->event_buf_size = compressed_size;
+        }
+        else {
+            memcpy(buf->event_buf, compressed_buf, compressed_size);
+            flb_free(compressed_buf);
+        }
+        b64_len = compressed_size;
+        goto copy_to_tmp;
+    }
 
     size = (kpl_len * 1.5) + 4;
     if (buf->event_buf == NULL || buf->event_buf_size < size) {
@@ -690,6 +719,7 @@ static int send_kpl_record(struct flb_kinesis *ctx, struct flush *buf,
         return -1;
     }
 
+copy_to_tmp:
     if (buf->tmp_buf_size < b64_len) {
         flb_plg_error(ctx->ins, "KPL record too large for tmp_buf");
         return -1;
