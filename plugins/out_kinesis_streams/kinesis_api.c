@@ -570,6 +570,7 @@ static int send_aggregated_record(struct flb_kinesis *ctx, struct flush *buf) {
     event->len = agg_size;
     event->timestamp.tv_sec = 0;
     event->timestamp.tv_nsec = 0;
+    event->partition_key = NULL;  /* use random fallback — aggregated records have no single key */
     buf->event_index = 1;
 
     /* Calculate data_size for the payload */
