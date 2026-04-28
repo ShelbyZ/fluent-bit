@@ -450,7 +450,10 @@ static int process_event(struct flb_kinesis *ctx, struct flush *buf,
     event->timestamp.tv_nsec = tms->tm.tv_nsec;
     event->partition_key = NULL;  /* use random fallback by default */
 
-    /* Extract partition key from record if configured */
+    /* Extract partition key from record if configured.
+     * We copy the value into tmp_buf immediately after the event data
+     * so the pointer remains valid when write_event() is called later —
+     * the msgpack buffer may be freed or reused by then. */
     if (ctx->partition_key && obj->type == MSGPACK_OBJECT_MAP) {
         msgpack_object_map map = obj->via.map;
         uint32_t k;
@@ -462,8 +465,15 @@ static int process_event(struct flb_kinesis *ctx, struct flush *buf,
                 strncmp(key.via.str.ptr, ctx->partition_key,
                         key.via.str.size) == 0) {
                 if (value.type == MSGPACK_OBJECT_STR && value.via.str.size > 0) {
-                    /* Point directly into the msgpack buffer — valid for this flush */
-                    event->partition_key = value.via.str.ptr;
+                    size_t pkey_len = value.via.str.size;
+                    size_t avail = buf->tmp_buf_size - buf->tmp_buf_offset;
+                    if (avail > pkey_len) {
+                        char *pkey_copy = buf->tmp_buf + buf->tmp_buf_offset;
+                        memcpy(pkey_copy, value.via.str.ptr, pkey_len);
+                        pkey_copy[pkey_len] = '\0';
+                        buf->tmp_buf_offset += pkey_len + 1;
+                        event->partition_key = pkey_copy;
+                    }
                 }
                 break;
             }
