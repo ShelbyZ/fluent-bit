@@ -205,6 +205,76 @@ static void test_flb_aws_endpoint()
     flb_free(endpoint);
 }
 
+static void test_flb_aws_endpoint_dualstack()
+{
+    char *endpoint;
+
+    initialization_crutch();
+
+    /* NULL inputs should return NULL */
+    endpoint = flb_aws_endpoint_dualstack(NULL, "us-east-1");
+    TEST_CHECK(endpoint == NULL);
+
+    endpoint = flb_aws_endpoint_dualstack("s3", NULL);
+    TEST_CHECK(endpoint == NULL);
+
+    /* Standard commercial region - S3 (s3.dualstack.<region>.amazonaws.com) */
+    endpoint = flb_aws_endpoint_dualstack("s3", "us-east-1");
+    TEST_CHECK(strcmp("s3.dualstack.us-east-1.amazonaws.com", endpoint) == 0);
+    flb_free(endpoint);
+
+    /* Standard commercial region - non-S3 (.api.aws) */
+    endpoint = flb_aws_endpoint_dualstack("logs", "us-east-1");
+    TEST_CHECK(strcmp("logs.us-east-1.api.aws", endpoint) == 0);
+    flb_free(endpoint);
+
+    /* China regions - S3 (s3.dualstack.<region>.amazonaws.com.cn) */
+    endpoint = flb_aws_endpoint_dualstack("s3", "cn-north-1");
+    TEST_CHECK(strcmp("s3.dualstack.cn-north-1.amazonaws.com.cn", endpoint) == 0);
+    flb_free(endpoint);
+
+    /* China regions - non-S3 (.api.amazonwebservices.com.cn) */
+    endpoint = flb_aws_endpoint_dualstack("sts", "cn-north-1");
+    TEST_CHECK(strcmp("sts.cn-north-1.api.amazonwebservices.com.cn", endpoint) == 0);
+    flb_free(endpoint);
+
+    /* GovCloud - S3 (s3.dualstack.<region>.amazonaws.com) */
+    endpoint = flb_aws_endpoint_dualstack("s3", "us-gov-west-1");
+    TEST_CHECK(strcmp("s3.dualstack.us-gov-west-1.amazonaws.com", endpoint) == 0);
+    flb_free(endpoint);
+
+    /* GovCloud - non-S3 (.api.aws) */
+    endpoint = flb_aws_endpoint_dualstack("logs", "us-gov-west-1");
+    TEST_CHECK(strcmp("logs.us-gov-west-1.api.aws", endpoint) == 0);
+    flb_free(endpoint);
+
+    /* EU Sovereign Cloud - S3 (s3.dualstack.<region>.amazonaws.eu) */
+    endpoint = flb_aws_endpoint_dualstack("s3", "eusc-de-east-1");
+    TEST_CHECK(strcmp("s3.dualstack.eusc-de-east-1.amazonaws.eu", endpoint) == 0);
+    flb_free(endpoint);
+
+    /* EU Sovereign Cloud - non-S3 (.api.amazonwebservices.eu) */
+    endpoint = flb_aws_endpoint_dualstack("logs", "eusc-de-east-1");
+    TEST_CHECK(strcmp("logs.eusc-de-east-1.api.amazonwebservices.eu", endpoint) == 0);
+    flb_free(endpoint);
+
+    /* C2S isolated regions - not supported */
+    endpoint = flb_aws_endpoint_dualstack("s3", "us-iso-east-1");
+    TEST_CHECK(endpoint == NULL);
+
+    /* SC2S isolated regions - not supported */
+    endpoint = flb_aws_endpoint_dualstack("s3", "us-isob-east-1");
+    TEST_CHECK(endpoint == NULL);
+
+    /* CSP isolated regions - not supported */
+    endpoint = flb_aws_endpoint_dualstack("s3", "us-isof-south-1");
+    TEST_CHECK(endpoint == NULL);
+
+    /* ADC-E isolated regions - not supported */
+    endpoint = flb_aws_endpoint_dualstack("s3", "eu-isoe-west-1");
+    TEST_CHECK(endpoint == NULL);
+}
+
 static void test_flb_get_s3_key_multi_tag_exists()
 {
     flb_sds_t s3_key_format = NULL;
@@ -419,6 +489,7 @@ static void test_flb_get_s3_key_mixed_timestamp()
 TEST_LIST = {
     { "parse_api_error" , test_flb_aws_error},
     { "flb_aws_endpoint" , test_flb_aws_endpoint},
+    { "flb_aws_endpoint_dualstack" , test_flb_aws_endpoint_dualstack},
     {"flb_get_s3_key_multi_tag_exists", test_flb_get_s3_key_multi_tag_exists},
     {"flb_get_s3_key_full_tag", test_flb_get_s3_key_full_tag},
     {"flb_get_s3_key_tag_special_characters", test_flb_get_s3_key_tag_special_characters},

@@ -42,6 +42,12 @@
 #define AWS_SERVICE_ENDPOINT_SUFFIX_EU         ".amazonaws.eu"
 #define AWS_SERVICE_ENDPOINT_SUFFIX_COM_CN     ".amazonaws.com.cn"
 
+#define AWS_DUALSTACK_ENDPOINT_FORMAT          "%s.%s%s"
+#define AWS_DUALSTACK_S3_ENDPOINT_FORMAT       "s3.dualstack.%s%s"
+#define AWS_DUALSTACK_ENDPOINT_SUFFIX_COM      ".api.aws"
+#define AWS_DUALSTACK_ENDPOINT_SUFFIX_COM_CN   ".api.amazonwebservices.com.cn"
+#define AWS_DUALSTACK_ENDPOINT_SUFFIX_EU       ".api.amazonwebservices.eu"
+
 /* Maps a region name prefix to its endpoint domain suffix. */
 struct flb_aws_endpoint_suffix {
     const char *prefix;
@@ -143,7 +149,91 @@ char *flb_aws_endpoint(char* service, char* region)
     }
 
     return endpoint;
+}
 
+/*
+ * Constructs an AWS dualstack service endpoint.
+ * S3 format: s3.dualstack.<region>.<domain-suffix>
+ * Other services: <service>.<region>.<dualstack-suffix>
+ * Returns NULL for unsupported regions.
+ */
+char *flb_aws_endpoint_dualstack(char *service, char *region)
+{
+    char *endpoint = NULL;
+    const char *domain_suffix = AWS_SERVICE_ENDPOINT_SUFFIX_COM;
+    const char *dualstack_suffix = AWS_DUALSTACK_ENDPOINT_SUFFIX_COM;
+    size_t len;
+    int bytes;
+    int i;
+
+    if (!service || !region) {
+        return NULL;
+    }
+
+    /* Walk the prefix table; first match wins */
+    for (i = 0; endpoint_suffixes[i].prefix != NULL; i++) {
+        if (strncmp(region, endpoint_suffixes[i].prefix,
+                    strlen(endpoint_suffixes[i].prefix)) == 0) {
+            domain_suffix = endpoint_suffixes[i].suffix;
+            break;
+        }
+    }
+
+    /* Isolated regions do not support dualstack */
+    if (domain_suffix == AWS_SERVICE_ENDPOINT_SUFFIX_C2S ||
+        domain_suffix == AWS_SERVICE_ENDPOINT_SUFFIX_SC2S ||
+        domain_suffix == AWS_SERVICE_ENDPOINT_SUFFIX_CSP ||
+        domain_suffix == AWS_SERVICE_ENDPOINT_SUFFIX_ADC_E) {
+        flb_warn("[aws] dualstack endpoints are not supported for service '%s' "
+                 "in region '%s'", service, region);
+        return NULL;
+    }
+
+    /* Warn for partially supported regions */
+    if (domain_suffix == AWS_SERVICE_ENDPOINT_SUFFIX_EU ||
+        strncmp(region, "us-gov-", 7) == 0) {
+        flb_warn("[aws] dualstack endpoints are only partially supported in "
+                 "region '%s'; service '%s' may not have a dualstack endpoint",
+                 region, service);
+    }
+
+    /* Resolve dualstack suffix based on partition */
+    if (domain_suffix == AWS_SERVICE_ENDPOINT_SUFFIX_COM_CN) {
+        dualstack_suffix = AWS_DUALSTACK_ENDPOINT_SUFFIX_COM_CN;
+    }
+    else if (domain_suffix == AWS_SERVICE_ENDPOINT_SUFFIX_EU) {
+        dualstack_suffix = AWS_DUALSTACK_ENDPOINT_SUFFIX_EU;
+    }
+
+    if (strcmp(service, "s3") == 0) {
+        len = strlen("s3.dualstack.") + strlen(region) + strlen(domain_suffix) + 1;
+    }
+    else {
+        len = strlen(service) + 1 + strlen(region) + strlen(dualstack_suffix) + 1;
+    }
+
+    endpoint = flb_calloc(len, sizeof(char));
+    if (!endpoint) {
+        flb_errno();
+        return NULL;
+    }
+
+    if (strcmp(service, "s3") == 0) {
+        bytes = snprintf(endpoint, len, AWS_DUALSTACK_S3_ENDPOINT_FORMAT,
+                         region, domain_suffix);
+    }
+    else {
+        bytes = snprintf(endpoint, len, AWS_DUALSTACK_ENDPOINT_FORMAT,
+                         service, region, dualstack_suffix);
+    }
+
+    if (bytes < 0 || (size_t) bytes >= len) {
+        flb_errno();
+        flb_free(endpoint);
+        return NULL;
+    }
+
+    return endpoint;
 }
 
 int flb_read_file(const char *path, char **out_buf, size_t *out_size)
